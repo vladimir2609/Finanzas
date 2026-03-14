@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>miFlow · Finanzas</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#128176;</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1140,11 +1141,29 @@ function renderHistorial() {
       : filtered.filter(r => r.categoria === currentFilter);
 
   document.getElementById('hist-sub').textContent =
-    `${MESES[currentMonth]} ${currentYear} · ${shown.length} movimiento${shown.length!==1?'s':''}`;
+    MESES[currentMonth] + ' ' + currentYear + ' · ' + shown.length + ' movimiento' + (shown.length!==1?'s':'');
+
+  const subtotalBar = document.getElementById('subtotalBar');
+  if (currentFilter !== 'todos') {
+    const totalFiltrado = shown.reduce((s,r) => s + r.montoSoles, 0);
+    const totalGastosMes = filtered.filter(r=>r.tipo==='Gasto').reduce((s,r)=>s+r.montoSoles,0);
+    const totalIngresosMes = filtered.filter(r=>r.tipo==='Ingreso').reduce((s,r)=>s+r.montoSoles,0);
+    const isGasto = currentFilter === 'Gasto' || (shown.length > 0 && shown[0].tipo === 'Gasto');
+    const base = isGasto ? totalGastosMes : totalIngresosMes;
+    const pct = base > 0 ? (totalFiltrado/base*100).toFixed(1) : 0;
+    const color = isGasto ? 'var(--expense)' : 'var(--income)';
+    document.getElementById('subtotalLabel').textContent = currentFilter;
+    document.getElementById('subtotalAmount').innerHTML = '<span style="color:' + color + '">S/ ' + formatNum(totalFiltrado) + '</span>';
+    document.getElementById('subtotalCount').textContent = shown.length + ' movimiento' + (shown.length!==1?'s':'');
+    document.getElementById('subtotalPct').textContent = pct + '% de ' + (isGasto?'gastos':'ingresos') + ' del mes';
+    subtotalBar.style.display = 'block';
+  } else {
+    subtotalBar.style.display = 'none';
+  }
 
   const el = document.getElementById('historialList');
   if (shown.length === 0) {
-    el.innerHTML = `<div class="empty-state"><div class="emoji">🔍</div>Sin resultados para este filtro</div>`;
+    el.innerHTML = '<div class="empty-state"><div class="emoji">&#128269;</div>Sin resultados para este filtro</div>';
     return;
   }
   el.innerHTML = [...shown].reverse().map(r => txHTML(r, true)).join('');
@@ -1235,27 +1254,78 @@ function getFiltered(month, year) {
   });
 }
 
-function txHTML(r, showDelete) {
+function txHTML(r, showActions) {
   const isInc = r.tipo === 'Ingreso';
-  const icon = ICONOS[r.categoria] || (isInc ? '💰' : '💸');
+  const icon = ICONOS[r.categoria] || (isInc ? '&#128176;' : '&#128184;');
   const bg = isInc ? '#1e3a2f' : '#3a1e1e';
   const _fd = parseDate(r.fecha);
   const fechaStr = _fd ? _fd.toLocaleDateString('es-PE', {day:'2-digit',month:'short'}) : 'Sin fecha';
-  const usdBadge = r.moneda === 'USD' ? `<span class="tc-badge">$ USD</span> ` : '';
-  const deleteBtn = showDelete ? `<button class="delete-btn" onclick="eliminar(${r.rowIndex}, event)">✕</button>` : '';
+  const usdBadge = r.moneda === 'USD' ? '<span class="tc-badge">$ USD</span> ' : '';
+  const actionBtns = showActions
+    ? '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;margin-left:4px;">'
+      + '<button style="background:rgba(87,200,240,0.12);border:1px solid var(--accent2);color:var(--accent2);border-radius:8px;padding:4px 9px;font-size:13px;cursor:pointer;" onclick="abrirEditar(' + r.rowIndex + ',event)">&#9999;</button>'
+      + '<button style="background:rgba(248,113,113,0.1);border:1px solid var(--expense);color:var(--expense);border-radius:8px;padding:4px 9px;font-size:13px;cursor:pointer;" onclick="eliminar(' + r.rowIndex + ',event)">&#10005;</button>'
+      + '</div>'
+    : '';
 
-  return `<div class="tx-item" id="tx-${r.rowIndex}">
-    <div class="tx-icon" style="background:${bg}">${icon}</div>
-    <div class="tx-info">
-      <div class="tx-name">${usdBadge}${r.descripcion || r.categoria}</div>
-      <div class="tx-cat">${r.categoria} · ${r.metodo}</div>
-    </div>
-    <div class="tx-right">
-      <div class="tx-amount ${isInc?'inc':'exp'}">${isInc?'+':'-'}S/ ${formatNum(r.montoSoles)}</div>
-      <div class="tx-date">${fechaStr}</div>
-    </div>
-    ${deleteBtn}
-  </div>`;
+  return '<div class="tx-item" id="tx-' + r.rowIndex + '">'
+    + '<div class="tx-icon" style="background:' + bg + '">' + icon + '</div>'
+    + '<div class="tx-info">'
+    +   '<div class="tx-name">' + usdBadge + (r.descripcion || r.categoria) + '</div>'
+    +   '<div class="tx-cat">' + r.categoria + ' · ' + r.metodo + '</div>'
+    + '</div>'
+    + '<div class="tx-right">'
+    +   '<div class="tx-amount ' + (isInc?'inc':'exp') + '">' + (isInc?'+':'-') + 'S/ ' + formatNum(r.montoSoles) + '</div>'
+    +   '<div class="tx-date">' + fechaStr + '</div>'
+    + '</div>'
+    + actionBtns
+    + '</div>';
+}
+
+function abrirEditar(rowIndex, e) {
+  e.stopPropagation();
+  const r = allData.find(x => x.rowIndex === rowIndex);
+  if (!r) return;
+  document.getElementById('edit-rowIndex').value = rowIndex;
+  document.getElementById('edit-descripcion').value = r.descripcion || '';
+  document.getElementById('edit-monto').value = r.monto || r.montoSoles;
+  document.getElementById('edit-categoria').value = r.categoria || '';
+  document.getElementById('edit-metodo').value = r.metodo || 'Transferencia';
+  document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeEdit() {
+  document.getElementById('editModal').style.display = 'none';
+}
+
+function closeEditOutside(e) {
+  if (e.target.id === 'editModal') closeEdit();
+}
+
+async function guardarEdicion() {
+  const rowIndex = parseInt(document.getElementById('edit-rowIndex').value);
+  const r = allData.find(x => x.rowIndex === rowIndex);
+  if (!r) return;
+  const descripcion = document.getElementById('edit-descripcion').value.trim();
+  const monto = parseFloat(document.getElementById('edit-monto').value);
+  const categoria = document.getElementById('edit-categoria').value;
+  const metodo = document.getElementById('edit-metodo').value;
+  if (!descripcion || !monto) { showToast('Completa todos los campos', 'error'); return; }
+  const tc = r.tipoCambio || 1;
+  const montoSoles = r.moneda === 'USD' ? monto * tc : monto;
+  try {
+    await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'delete', row: rowIndex }) });
+    await fetch(API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'add', fecha: r.fecha, tipo: r.tipo, categoria, descripcion,
+      monto, moneda: r.moneda, tipoCambio: tc,
+      montoSoles: parseFloat(montoSoles.toFixed(2)), metodo
+    })});
+    closeEdit();
+    showToast('Movimiento actualizado', 'success');
+    await loadData();
+  } catch(err) {
+    showToast('Error al actualizar', 'error');
+  }
 }
 
 async function eliminar(rowIndex, e) {
