@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>miFlow · Finanzas</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -755,11 +754,65 @@ html, body {
       <div class="filter-chip" onclick="setFilter('Salud',this)">Salud</div>
       <div class="filter-chip" onclick="setFilter('Educación',this)">Educación</div>
       <div class="filter-chip" onclick="setFilter('Entretenimiento',this)">Entret.</div>
+      <div class="filter-chip" onclick="setFilter('Otro gasto',this)">Otro gasto</div>
+      <div class="filter-chip" onclick="setFilter('Otro ingreso',this)">Otro ingreso</div>
+    </div>
+    <div id="subtotalBar" style="display:none;padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;color:var(--muted)" id="subtotalLabel">Subtotal</span>
+        <span style="font-family:'DM Serif Display',serif;font-size:20px;font-weight:600;" id="subtotalAmount">S/ 0.00</span>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:3px;">
+        <span style="font-size:11px;color:var(--muted)" id="subtotalCount"></span>
+        <span style="font-size:11px;color:var(--accent)" id="subtotalPct"></span>
+      </div>
     </div>
     <div class="section" style="border:none">
       <div id="historialList">
         <div class="loading"><div class="spinner"></div>Cargando...</div>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL EDITAR -->
+  <div id="editModal" onclick="closeEditOutside(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;align-items:flex-end;justify-content:center;flex-direction:column;">
+    <div id="editModalContent" style="background:var(--surface);border-radius:24px 24px 0 0;padding:24px 20px 40px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;margin:0 auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <div style="font-family:'DM Serif Display',serif;font-size:22px;">Editar <span style="color:var(--accent2)">movimiento</span></div>
+        <button onclick="closeEdit()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:6px 12px;font-size:13px;cursor:pointer;">✕</button>
+      </div>
+      <input type="hidden" id="edit-rowIndex">
+      <div class="form-field">
+        <label class="form-label">Descripción</label>
+        <input class="form-input" type="text" id="edit-descripcion">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Monto (moneda original)</label>
+        <input class="form-input" type="number" id="edit-monto" step="0.01">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Categoría</label>
+        <select class="form-select" id="edit-categoria">
+          <optgroup label="Gastos">
+            <option>Alimentación</option><option>Transporte</option>
+            <option>Vivienda</option><option>Salud</option>
+            <option>Educación</option><option>Entretenimiento</option>
+            <option>Otro gasto</option>
+          </optgroup>
+          <optgroup label="Ingresos">
+            <option>Sueldo TodoClima</option><option>Airbnb</option>
+            <option>Roomva Perú</option><option>Otro ingreso</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Método de pago</label>
+        <select class="form-select" id="edit-metodo">
+          <option>Tarjeta</option><option>Efectivo</option>
+          <option>Yape / Plin</option><option>Transferencia</option><option>Otro</option>
+        </select>
+      </div>
+      <button class="submit-btn" style="background:var(--accent2);color:#0c0c10;margin-top:8px;" onclick="guardarEdicion()">Guardar cambios ✓</button>
     </div>
   </div>
 
@@ -1145,10 +1198,39 @@ function renderResumen() {
 // ══════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════
+function parseDate(fecha) {
+  if (!fecha) return null;
+  // Handle both "2025-03-01" and "3/1/2025" and Date objects
+  if (typeof fecha === 'number') {
+    // Google Sheets serial date
+    const d = new Date((fecha - 25569) * 86400 * 1000);
+    return d;
+  }
+  const s = String(fecha).trim();
+  // Try YYYY-MM-DD first
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const [y, m, d] = s.split('T')[0].split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  // Try M/D/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) {
+    const [m, d, y] = s.split('/').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  // Try DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
+    const parts = s.split('/').map(Number);
+    return new Date(parts[2], parts[1] - 1, parts[0]);
+  }
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
 function getFiltered(month, year) {
   return allData.filter(r => {
     if (!r.fecha) return false;
-    const d = new Date(r.fecha);
+    const d = parseDate(r.fecha);
+    if (!d) return false;
     return d.getMonth() === month && d.getFullYear() === year;
   });
 }
@@ -1157,7 +1239,8 @@ function txHTML(r, showDelete) {
   const isInc = r.tipo === 'Ingreso';
   const icon = ICONOS[r.categoria] || (isInc ? '💰' : '💸');
   const bg = isInc ? '#1e3a2f' : '#3a1e1e';
-  const fechaStr = r.fecha ? new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-PE', {day:'2-digit',month:'short'}) : '';
+  const _fd = parseDate(r.fecha);
+  const fechaStr = _fd ? _fd.toLocaleDateString('es-PE', {day:'2-digit',month:'short'}) : 'Sin fecha';
   const usdBadge = r.moneda === 'USD' ? `<span class="tc-badge">$ USD</span> ` : '';
   const deleteBtn = showDelete ? `<button class="delete-btn" onclick="eliminar(${r.rowIndex}, event)">✕</button>` : '';
 
